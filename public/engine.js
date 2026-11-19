@@ -1,7 +1,7 @@
 /**
  * ĐỘNG CƠ MÔ PHỎNG DUELING DQN & 9 KỊCH BẢN TẤN CÔNG ĐỐI KHÁNG (AI ATTACK)
- * Hệ thống phân bổ kho hàng (Warehouse Allocation: 50 Kho x 50 Khách hàng)
- * Tuân thủ 100% đặc tả Chương 4 của tài liệu nghiên cứu.
+ * Hệ thống Điều hành Logistics & Phân bổ Kho hàng (Warehouse Allocation: 50 Kho x 50 Khách hàng)
+ * Bổ sung Bộ giải mã gói tin tin tặc (Packet Diff), Biến thiên Q-value & Nhật ký sự cố doanh nghiệp.
  */
 
 class SeededRNG {
@@ -36,12 +36,6 @@ class WarehouseEnvironmentEngine {
         this.initBaseDataset();
     }
 
-    /**
-     * Khởi tạo bộ dữ liệu gốc thống nhất cho cả 9 kịch bản:
-     * - 50 Kho hàng (W1..W50): Tọa độ, Sức chứa còn lại (Cap), Trạng thái mở (O), Giới hạn phục vụ (l_max), Vai trò chiến lược
-     * - 50 Khách hàng (U1..U50): Tọa độ, Nhu cầu (D)
-     * - Ma trận chi phí vận chuyển C (50 x 50 = 2.500 phần tử)
-     */
     initBaseDataset() {
         const rng = new SeededRNG(this.seed);
         this.warehouses = [];
@@ -55,12 +49,13 @@ class WarehouseEnvironmentEngine {
         // 10 kho có sức chứa còn lại thấp (sắp đầy - Kịch bản 3): W3, W8, W12, W18, W25, W28, W34, W38, W44, W49
         const lowCapSet = new Set([2, 7, 11, 17, 24, 27, 33, 37, 43, 48]);
 
+        const regions = ['Miền Bắc', 'Bắc Trung Bộ', 'Nam Trung Bộ', 'Đông Nam Bộ', 'Đồng Bằng Sông Cửu Long'];
+
         for (let i = 0; i < this.numWarehouses; i++) {
             const isStrategic = strategicIds.has(i);
             const isLowCap = lowCapSet.has(i);
             const x = isStrategic ? rng.nextFloat(40, 60) : rng.nextFloat(6, 94);
             const y = isStrategic ? rng.nextFloat(40, 60) : rng.nextFloat(6, 94);
-
             const isOpen = closedSet.has(i) ? 0 : 1;
 
             let capacity;
@@ -73,11 +68,13 @@ class WarehouseEnvironmentEngine {
             }
 
             const lmax = isStrategic ? 3 : i % 4 === 0 ? 1 : 2;
+            const region = isStrategic ? 'Trung Tâm Điều Phối Quốc Gia' : regions[i % regions.length];
 
             this.warehouses.push({
                 id: i,
                 code: `W${i + 1}`,
-                name: isStrategic ? `Kho chiến lược W${i + 1}` : `Kho W${i + 1}`,
+                name: isStrategic ? `Kho Hub Chiến Lược W${i + 1}` : `Kho Phân Phối W${i + 1}`,
+                region,
                 x,
                 y,
                 initialCapacity: capacity,
@@ -88,6 +85,7 @@ class WarehouseEnvironmentEngine {
             });
         }
 
+        const customerTypes = ['Siêu thị Bán lẻ', 'Nhà máy Sản xuất', 'Đại lý Phân phối', 'Trung tâm Thương mại', 'Cửa hàng Chuỗi'];
         let totalDemand = 0;
         for (let j = 0; j < this.numCustomers; j++) {
             const x = rng.nextFloat(5, 95);
@@ -97,7 +95,7 @@ class WarehouseEnvironmentEngine {
             this.customers.push({
                 id: j,
                 code: `U${j + 1}`,
-                name: `Khách hàng U${j + 1}`,
+                name: `${customerTypes[j % customerTypes.length]} U${j + 1}`,
                 x,
                 y,
                 initialDemand: demand
@@ -105,7 +103,6 @@ class WarehouseEnvironmentEngine {
         }
         this.totalInitialDemand = totalDemand;
 
-        // Khởi tạo ma trận chi phí vận chuyển C (50 x 50)
         for (let i = 0; i < this.numWarehouses; i++) {
             const row = [];
             for (let j = 0; j < this.numCustomers; j++) {
@@ -122,10 +119,6 @@ class WarehouseEnvironmentEngine {
         }
     }
 
-    /**
-     * Tính toán nhánh Value V(s; theta) và Advantage A(s, a; theta) của mạng Dueling DQN
-     * Q(s, a; theta) = V(s; theta) + (A(s, a; theta) - mean(A(s, a'; theta)))
-     */
     computeDuelingQValues(obsState, customerIdx, modelMode = 'M0', isPoisonedRewardModel = false) {
         const demand = obsState.demand[customerIdx];
         const openRatio = obsState.openStatus.reduce((acc, v) => acc + v, 0) / this.numWarehouses;
@@ -183,9 +176,6 @@ class WarehouseEnvironmentEngine {
         };
     }
 
-    /**
-     * Xây dựng dữ liệu quan sát bị tấn công (State Manipulation / FGSM) theo từng kịch bản 1 -> 9
-     */
     buildObservedState(realState, scenarioId, customerIdx) {
         const obs = {
             capacity: [...realState.capacity],
@@ -317,6 +307,179 @@ class WarehouseEnvironmentEngine {
         return mask;
     }
 
+    /**
+     * Tạo mô tả gói tin bị tin tặc sửa đổi và hậu quả kinh doanh tại mỗi bước
+     */
+    buildStepExplainability({
+        scenarioId,
+        stepNumber,
+        customer,
+        realState,
+        obsState,
+        cleanDueling,
+        attackDueling,
+        realValidMask,
+        obsMask,
+        cleanBestAction,
+        proposedAction,
+        finalAction,
+        isClosedViolation,
+        isCapViolation,
+        isLmaxViolation,
+        realDemand,
+        stepCost,
+        bestRealCost,
+        stepUnserved,
+        status,
+        modelMode
+    }) {
+        const whProposed = this.warehouses[proposedAction];
+        const whClean = this.warehouses[cleanBestAction >= 0 ? cleanBestAction : 0];
+        const whFinal = this.warehouses[finalAction];
+
+        // 1. Phân tích gói tin bị tin tặc can thiệp (Packet Diff)
+        let packetTamperDetail = 'Gói tin trạng thái sạch (Không phát hiện can thiệp)';
+        let tamperedField = 'Không có';
+        let realValStr = '';
+        let spoofedValStr = '';
+
+        const j = customer.id;
+        const pIdx = proposedAction;
+
+        switch (Number(scenarioId)) {
+            case 1:
+                tamperedField = `OpenStatus[${whProposed.code}] & Cost[${whProposed.code}][${customer.code}]`;
+                realValStr = `Open=${realState.openStatus[pIdx]} (${realState.openStatus[pIdx] === 1 ? 'Mở' : 'ĐANG ĐÓNG'}), Cước=${realState.costMatrix[pIdx][j]}`;
+                spoofedValStr = `Open=${obsState.openStatus[pIdx]} (GIẢ MẠO MỞ), Cước=${obsState.costMatrix[pIdx][j]}`;
+                packetTamperDetail = `Tin tặc lật bit OpenStatus của ${whProposed.code} từ ${realState.openStatus[pIdx]} → ${obsState.openStatus[pIdx]} và hạ cước ảo xuống ${obsState.costMatrix[pIdx][j]}`;
+                break;
+            case 2:
+                tamperedField = `TransportCost[${whProposed.code}][${customer.code}]`;
+                realValStr = `Cước thực ${whProposed.code}=${realState.costMatrix[pIdx][j]} (Kho tối ưu ${whClean.code}=${bestRealCost})`;
+                spoofedValStr = `Cước giả ${whProposed.code}=${obsState.costMatrix[pIdx][j]} (Kho ${whClean.code} bị đẩy lên ${obsState.costMatrix[whClean.id][j]})`;
+                packetTamperDetail = `Đảo ngược bảng giá cước TMS: Tuyến xa ${whProposed.code} (${realState.costMatrix[pIdx][j]} đv) bị sửa thành rẻ (${obsState.costMatrix[pIdx][j]} đv)`;
+                break;
+            case 3:
+                tamperedField = `Capacity[${whProposed.code}]`;
+                realValStr = `Tồn kho thực ${whProposed.code} = ${realState.capacity[pIdx]} tấn (Đơn hàng cần ${realDemand} tấn)`;
+                spoofedValStr = `Tồn kho giả ${whProposed.code} = ${obsState.capacity[pIdx]} tấn (Bơm thêm +${obsState.capacity[pIdx] - realState.capacity[pIdx]} tấn ảo)`;
+                packetTamperDetail = `Phóng đại tồn kho WMS tại ${whProposed.code} từ ${realState.capacity[pIdx]} lên ${obsState.capacity[pIdx]} tấn để dụ AI dồn đơn`;
+                break;
+            case 4:
+                tamperedField = `Demand[${customer.code}]`;
+                realValStr = `Nhu cầu đặt hàng thực tế D_real = ${realDemand} tấn`;
+                spoofedValStr = `Nhu cầu giả mạo D_obs = ${obsState.demand[j]} tấn (Lệch ${obsState.demand[j] - realDemand >= 0 ? '+' : ''}${obsState.demand[j] - realDemand} tấn)`;
+                packetTamperDetail = `Can thiệp cổng OMS làm đơn hàng của ${customer.code} biến động từ ${realDemand} tấn thành ${obsState.demand[j]} tấn`;
+                break;
+            case 5:
+                tamperedField = `Hub Chiến Lược [W1, W10, W20, W30, W40]`;
+                realValStr = `5 Kho Hub trung tâm bị nghẽn (Cap=30 tấn), cước chuẩn ${whProposed.code}=${realState.costMatrix[pIdx][j]}`;
+                spoofedValStr = `Báo trạng thái & sức chứa giả trên 5 Hub trung tâm (Cap_obs=${obsState.capacity[pIdx]}, Open_obs=${obsState.openStatus[pIdx]})`;
+                packetTamperDetail = `Tấn công có chủ đích vào 5 kho chiến lược trung tâm gây hiệu ứng domino lên 45 kho vệ tinh`;
+                break;
+            case 6:
+                tamperedField = `ServedCount l_i[${whProposed.code}] (Ngưỡng l_max = ${whProposed.lmax})`;
+                realValStr = `Số khách đang phục vụ l_real = ${realState.servedCount[pIdx]} / l_max = ${whProposed.lmax}`;
+                spoofedValStr = `Bộ đếm giả mạo l_obs = ${obsState.servedCount[pIdx]} / l_max = ${whProposed.lmax}`;
+                packetTamperDetail = `Reset bộ đếm lượt xe tại cửa xuất hàng ${whProposed.code} về 0 khiến AI điều vượt ngưỡng l_max`;
+                break;
+            case 7: {
+                const inWindow = customer.id >= 30 && customer.id < 40;
+                tamperedField = inWindow ? `Cửa sổ tấn công chớp nhoáng (Bước 61–80)` : `Ngoài khung giờ tấn công`;
+                realValStr = `Open=${realState.openStatus[pIdx]}, Cap=${realState.capacity[pIdx]}, Cước=${realState.costMatrix[pIdx][j]}`;
+                spoofedValStr = inWindow
+                    ? `Nhiễu chớp nhoáng: Open=${obsState.openStatus[pIdx]}, Cap=${obsState.capacity[pIdx]}, Cước=${obsState.costMatrix[pIdx][j]}`
+                    : `Dữ liệu bình thường (Không nhiễu)`;
+                packetTamperDetail = inWindow
+                    ? `[ĐANG PHÁT ĐỘNG TẤN CÔNG CHỚP NHOÁNG] Bơm nhiễu đồng loạt trong khung bước 61–80`
+                    : `Hệ thống vận hành bình thường ngoài cửa sổ tấn công`;
+                break;
+            }
+            case 8:
+                tamperedField = `Tổ hợp Mask [OpenStatus + Capacity + l_i] tại ${whProposed.code}`;
+                realValStr = `Thực tế: Open=${realState.openStatus[pIdx]}, Cap=${realState.capacity[pIdx]}, l=${realState.servedCount[pIdx]}/${whProposed.lmax} (KHÔNG HỢP LỆ)`;
+                spoofedValStr = `Giả mạo: Open=${obsState.openStatus[pIdx]}, Cap=${obsState.capacity[pIdx]}, l=${obsState.servedCount[pIdx]}/${whProposed.lmax} (VƯỢT QUA MASK)`;
+                packetTamperDetail = `Bóp méo đồng bộ cả 3 trường điều kiện tại ${whProposed.code} để lách qua bộ lọc Action Masking`;
+                break;
+            case 9:
+                tamperedField = `Hàm phần thưởng huấn luyện R_t (Model B)`;
+                realValStr = `R_chuẩn = -(Cost × 0.05) + 15 - 35 (Tối thiểu hóa chi phí)`;
+                spoofedValStr = `R_đầu_độc = +(Cost × 0.09) + Thưởng_quá_tải (Đảo dấu mục tiêu)`;
+                packetTamperDetail = `Mô hình bị đầu độc phần thưởng từ giai đoạn huấn luyện nên cố tình chọn tuyến đắt & kho quá tải`;
+                break;
+        }
+
+        // 2. Top 5 kho ứng viên để so sánh trực quan Q-value sạch vs Q-value bị tấn công
+        const candidateIndices = new Set();
+        if (cleanBestAction >= 0) candidateIndices.add(cleanBestAction);
+        candidateIndices.add(proposedAction);
+        candidateIndices.add(finalAction);
+
+        // Thêm các kho có Q tấn công hoặc Q sạch cao nhất cho đủ 5 kho
+        const sortedByAttackQ = Array.from({ length: this.numWarehouses }, (_, idx) => idx).sort(
+            (a, b) => attackDueling.qValues[b] - attackDueling.qValues[a]
+        );
+        for (const idx of sortedByAttackQ) {
+            if (candidateIndices.size >= 5) break;
+            candidateIndices.add(idx);
+        }
+
+        const topCandidates = Array.from(candidateIndices).map(idx => {
+            const w = this.warehouses[idx];
+            return {
+                warehouseIdx: idx,
+                code: w.code,
+                name: w.name,
+                cleanQ: Number(cleanDueling.qValues[idx].toFixed(2)),
+                attackQ: Number(attackDueling.qValues[idx].toFixed(2)),
+                realCost: realState.costMatrix[idx][j],
+                obsCost: obsState.costMatrix[idx][j],
+                realCap: realState.capacity[idx],
+                obsCap: obsState.capacity[idx],
+                realOpen: realState.openStatus[idx],
+                obsOpen: obsState.openStatus[idx],
+                realValid: realValidMask[idx],
+                obsValid: obsMask[idx],
+                isCleanBest: idx === cleanBestAction,
+                isProposed: idx === proposedAction,
+                isFinal: idx === finalAction
+            };
+        });
+
+        // 3. Mô tả sự cố kinh doanh thực tế (Business Impact Story)
+        let businessNarrative = '';
+        if (modelMode === 'M0') {
+            businessNarrative = `[VẬN HÀNH CHUẨN] Đơn hàng ${customer.code} (${realDemand} tấn) được điều phối tới ${whFinal.code} với cước tối ưu ${stepCost} đv tiền. Giao hàng đúng hạn 100%.`;
+        } else if (status.includes('M3')) {
+            businessNarrative = `[PHÒNG THỦ M3 CHẶN ĐỨNG SỰ CỐ] AI bị lừa đề xuất ${whProposed.code} (Kho không hợp lệ thực tế). Rào chắn kiểm tra dữ liệu gốc tại kho đã TỪ CHỐI lệnh xuất kho và tự động điều hướng sang ${whFinal.code}, bảo toàn 100% đơn hàng ${realDemand} tấn!`;
+        } else if (isClosedViolation) {
+            businessNarrative = `[SỰ CỐ NGHIÊM TRỌNG - ĐIỀU XE VÀO KHO ĐÓNG CỬA] AI điều đoàn xe chở ${realDemand} tấn của ${customer.code} tới ${whProposed.code} đang đóng cửa bảo trì! Đoàn xe phải quay đầu khẩn cấp, phát sinh phí phạt điều chuyển, tổng chi phí vọt lên ${stepCost} đv tiền và đứt gãy ${stepUnserved} tấn hàng!`;
+        } else if (isCapViolation) {
+            businessNarrative = `[SỰ CỐ VỠ KẾ HOẠCH TỒN KHO (CV)] AI dồn đơn ${realDemand} tấn của ${customer.code} vào ${whProposed.code} khi kho chỉ còn rất ít hàng! Kho bị âm tồn kho thực tế, thiếu hụt ${stepUnserved} tấn hàng giao cho khách và chịu phạt hợp đồng nặng!`;
+        } else if (isLmaxViolation) {
+            businessNarrative = `[SỰ CỐ TẮC NGHẼN BẾN XUẤT HÀNG (LV)] ${whProposed.code} đã chạm trần phục vụ (${whProposed.lmax} khách), nhưng bộ đếm giả khiến AI tiếp tục ép nhận đơn ${customer.code}. Bến bốc xếp quá tải dây chuyền, gây trễ hạn ${stepUnserved} tấn hàng!`;
+        } else if (status.includes('DEMAND')) {
+            businessNarrative = `[SỰ CỐ LỆCH CUNG - CẦU] Nhu cầu thực của ${customer.code} là ${realDemand} tấn nhưng tin tặc sửa đơn thành ${obsState.demand[j]} tấn. Kho ${whFinal.code} xuất thiếu hàng, làm đứt gãy ${stepUnserved} tấn hàng tại điểm bán!`;
+        } else if (status.includes('CẤP DƯ')) {
+            businessNarrative = `[SỰ CỐ LÃNG PHÍ TÀI NGUYÊN] Tin tặc thổi phồng đơn hàng ${customer.code} từ ${realDemand} lên ${obsState.demand[j]} tấn, buộc doanh nghiệp điều xe trọng tải lớn từ ${whFinal.code}, đội chi phí lên ${stepCost} đv tiền!`;
+        } else if (stepCost > bestRealCost + 15) {
+            businessNarrative = `[SỰ CỐ ĐIỀU PHỐI LỘ TRÌNH VÒNG VÈO] Thay vì chọn kho gần ${whClean.code} (cước chỉ ${bestRealCost} đv), AI bị bảng giá giả đánh lừa chọn kho xa ${whFinal.code} với cước thực tế lên tới ${stepCost} đv (+${stepCost - bestRealCost} đv tiền lãng phí)!`;
+        } else {
+            businessNarrative = `[ĐIỀU PHỐI THÀNH CÔNG] Đơn hàng ${customer.code} (${realDemand} tấn) được phân bổ về ${whFinal.code} với chi phí ${stepCost} đv tiền.`;
+        }
+
+        return {
+            tamperedField,
+            realValStr,
+            spoofedValStr,
+            packetTamperDetail,
+            topCandidates,
+            businessNarrative,
+            cleanBestWarehouseCode: whClean.code,
+            cleanBestCost: bestRealCost
+        };
+    }
+
     runSimulation(scenarioId = 1, modelMode = 'M0') {
         const rng = new SeededRNG(this.seed + scenarioId * 17);
 
@@ -363,26 +526,37 @@ class WarehouseEnvironmentEngine {
 
         for (let j = 0; j < this.numCustomers; j++) {
             const realDemand = realState.demand[j];
+            const cleanStateSnapshot = {
+                capacity: [...realState.capacity],
+                openStatus: [...realState.openStatus],
+                costMatrix: realState.costMatrix.map(r => [...r]),
+                demand: [...realState.demand],
+                servedCount: [...realState.servedCount]
+            };
 
             const obsState = isUnderAttack
                 ? this.buildObservedState(realState, scenarioId, j)
-                : {
-                      capacity: [...realState.capacity],
-                      openStatus: [...realState.openStatus],
-                      costMatrix: realState.costMatrix.map(r => [...r]),
-                      demand: [...realState.demand],
-                      servedCount: [...realState.servedCount]
-                  };
+                : cleanStateSnapshot;
 
+            const cleanDueling = this.computeDuelingQValues(cleanStateSnapshot, j, 'M0', false);
             const duelingOut = this.computeDuelingQValues(obsState, j, modelMode, isRewardPoisoned);
 
             const realValidMask = this.getActionMask(realState, j, realDemand);
             let bestRealCost = Infinity;
             let bestRealWarehouse = -1;
+            let cleanBestAction = -1;
+            let cleanBestQ = -Infinity;
+
             for (let i = 0; i < this.numWarehouses; i++) {
-                if (realValidMask[i] && realState.costMatrix[i][j] < bestRealCost) {
-                    bestRealCost = realState.costMatrix[i][j];
-                    bestRealWarehouse = i;
+                if (realValidMask[i]) {
+                    if (realState.costMatrix[i][j] < bestRealCost) {
+                        bestRealCost = realState.costMatrix[i][j];
+                        bestRealWarehouse = i;
+                    }
+                    if (cleanDueling.qValues[i] > cleanBestQ) {
+                        cleanBestQ = cleanDueling.qValues[i];
+                        cleanBestAction = i;
+                    }
                 }
             }
 
@@ -535,6 +709,30 @@ class WarehouseEnvironmentEngine {
                 suboptimalDecisions++;
             }
 
+            const explain = this.buildStepExplainability({
+                scenarioId,
+                stepNumber: j + 1,
+                customer: this.customers[j],
+                realState: cleanStateSnapshot,
+                obsState,
+                cleanDueling,
+                attackDueling: duelingOut,
+                realValidMask,
+                obsMask,
+                cleanBestAction: cleanBestAction >= 0 ? cleanBestAction : bestRealWarehouse,
+                proposedAction,
+                finalAction,
+                isClosedViolation,
+                isCapViolation,
+                isLmaxViolation,
+                realDemand,
+                stepCost,
+                bestRealCost: Number.isFinite(bestRealCost) ? bestRealCost : stepCost,
+                stepUnserved,
+                status,
+                modelMode
+            });
+
             totalAllocationCost += stepCost;
             servedDemand += stepServed;
             unservedDemand += stepUnserved;
@@ -552,20 +750,24 @@ class WarehouseEnvironmentEngine {
             stepLogs.push({
                 step: j + 1,
                 customerCode: this.customers[j].code,
+                customerName: this.customers[j].name,
                 realDemand: realDemand,
                 observedDemand: obsState.demand[j],
                 proposedWarehouse: this.warehouses[proposedAction].code,
                 finalWarehouse: this.warehouses[finalAction].code,
                 warehouseIdx: finalAction,
+                proposedWarehouseIdx: proposedAction,
                 customerIdx: j,
                 qValue: Number(duelingOut.qValues[proposedAction].toFixed(2)),
+                cleanQValue: Number(cleanDueling.qValues[proposedAction].toFixed(2)),
                 vValue: duelingOut.V_s,
                 realCost: stepCost,
                 observedCost: obsState.costMatrix[proposedAction][j],
                 unserved: stepUnserved,
                 reward: Number(stepReward.toFixed(2)),
                 isInvalidProposal: isProposalInvalid,
-                status: status
+                status: status,
+                explain
             });
         }
 
