@@ -1,0 +1,22 @@
+{
+  "name": "secure-cwlp-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20.0.0" },
+  "scripts": {
+    "test": "node --test",
+    "start": "node src/index.js web",
+    "train": "node src/index.js train",
+    "evaluate": "node src/index.js evaluate",
+    "attack": "node src/index.js attack",
+    "defense": "node src/index.js defense",
+    "train-defense": "node src/index.js train-defense",
+    "baseline": "node src/index.js evaluate"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs-node": "^4.22.0",
+    "express": "^5.1.0",
+    "zod": "^3.25.76"
+  }
+}

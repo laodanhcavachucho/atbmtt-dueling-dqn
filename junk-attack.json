@@ -1,0 +1,18 @@
+{
+  "source": "junk-attack-demo",
+  "description": "Synthetic malformed input for local security response demonstration",
+  "states": [
+    {
+      "id": "wrong-dimension",
+      "state": [0.2, 0.8, 1.4, -0.3, 0.5]
+    },
+    {
+      "id": "non-numeric",
+      "state": ["corrupted", null, 0.4, 0.9]
+    },
+    {
+      "id": "out-of-domain",
+      "state": [1.8, -2, 0.4, 0.7, 1.2, 0.1, 0.9]
+    }
+  ]
+}

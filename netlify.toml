@@ -1,0 +1,6 @@
+[build]
+  publish = "public"
+  command = "echo 'Deploying static frontend from public/'"
+
+[build.environment]
+  NPM_FLAGS = "--ignore-scripts"

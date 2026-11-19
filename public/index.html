@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mô Phỏng AI Attack – Đánh Lừa Mạng Dueling DQN Trong Hệ Thống Vận Tải (50 Kho × 50 Khách Hàng)</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <!-- HEADER -->
+    <header class="app-header">
+        <div class="header-brand">
+            <h1>HỆ THỐNG MÔ PHỎNG TẤN CÔNG ĐỐI KHÁNG (AI ATTACK) – ĐÁNH LỪA MẠNG DUELING DQN TRONG VẬN TẢI</h1>
+            <p>Bài toán Phân bổ kho hàng (Warehouse Allocation: 50 Kho hàng × 50 Khách hàng) • Thống nhất số liệu 9 Kịch bản &amp; 4 Mô hình đối chứng</p>
+        </div>
+        <div class="header-badges">
+            <span class="spec-badge">Mô hình: Dueling DQN</span>
+            <span class="spec-badge">State Space: 2.650 / 2.750 chiều</span>
+            <span class="spec-badge">Action Space: 50 kho (A = 0..49)</span>
+            <span class="spec-badge">Nhiễu đối kháng: FGSM + Action Masking</span>
+        </div>
+    </header>
+
+    <!-- THANH ĐIỀU HƯỚNG TAB (100% TIẾNG VIỆT) -->
+    <nav class="nav-tabs-bar">
+        <button class="nav-tab-btn active" data-tab="tab-visualizer">
+            1. Mô Phỏng Trực Quan &amp; Bản Đồ 50 Kho – 50 Khách Hàng
+        </button>
+        <button class="nav-tab-btn" data-tab="tab-scenarios-detail">
+            2. Chi Tiết 9 Kịch Bản (Bảng Số Liệu Thành Viên 1 → 9)
+        </button>
+        <button class="nav-tab-btn" data-tab="tab-chapter4-summary">
+            3. Tổng Hợp Chương 4 (Mục 4.5 &amp; 4.6 – So Sánh M0, M1, M2, M3)
+        </button>
+        <button class="nav-tab-btn" data-tab="tab-dataset-inspector">
+            4. Bộ Dữ Liệu Gốc Chung (50 Kho, 50 Khách, Ma Trận C₅₀ₓ₅₀)
+        </button>
+        <button class="nav-tab-btn" data-tab="tab-security-center">
+            5. Trung Tâm Phòng Thủ Đa Lớp &amp; Kiểm Duyệt Đầu Vào
+        </button>
+    </nav>
+
+    <main class="main-container">
+        <!-- =================================================================== -->
+        <!-- TAB 1: MÔ PHỎNG TRỰC QUAN & BẢN ĐỒ MẠNG LƯỚI 50 KHO - 50 KHÁCH HÀNG -->
+        <!-- =================================================================== -->
+        <section id="tab-visualizer" class="tab-panel active">
+            <div class="control-panel-card">
+                <div class="scenario-pills-bar">
+                    <button class="scenario-pill active" data-scenario="1">KB 1: Giả mạo Đóng/Mở kho</button>
+                    <button class="scenario-pill" data-scenario="2">KB 2: Đầu độc Chi phí vận chuyển</button>
+                    <button class="scenario-pill" data-scenario="3">KB 3: Bóp méo Sức chứa kho</button>
+                    <button class="scenario-pill" data-scenario="4">KB 4: Làm giả Nhu cầu khách hàng</button>
+                    <button class="scenario-pill" data-scenario="5">KB 5: Tấn công 5 Kho chiến lược</button>
+                    <button class="scenario-pill" data-scenario="6">KB 6: Tràn giới hạn phục vụ l_max</button>
+                    <button class="scenario-pill" data-scenario="7">KB 7: Tấn công Ngắt quãng (3 giai đoạn)</button>
+                    <button class="scenario-pill" data-scenario="8">KB 8: Vượt qua lớp lọc Action Masking</button>
+                    <button class="scenario-pill" data-scenario="9">KB 9: Đầu độc Phần thưởng (Reward Poisoning)</button>
+                </div>
+
+                <div class="controls-grid">
+                    <div class="control-group">
+                        <label for="select-scenario">Chọn kịch bản tấn công (Thành viên 1 → 9)</label>
+                        <select id="select-scenario" class="select-input">
+                            <option value="1">Kịch bản 1 (TV 1) – Giả mạo trạng thái đóng/mở kho (Open Status Spoofing)</option>
+                            <option value="2">Kịch bản 2 (TV 2) – Bóp méo ma trận chi phí vận chuyển (Transport Cost Poisoning)</option>
+                            <option value="3">Kịch bản 3 (TV 3) – Bóp méo năng lực sức chứa kho (Capacity Exhaustion Attack)</option>
+                            <option value="4">Kịch bản 4 (TV 4) – Làm giả nhu cầu khách hàng (Fake Demand Fluctuation)</option>
+                            <option value="5">Kịch bản 5 (TV 5) – Tấn công chuỗi cung ứng phân tán (5 Kho chiến lược)</option>
+                            <option value="6">Kịch bản 6 (TV 6) – Làm tràn giới hạn phục vụ khách hàng (l_max Overload)</option>
+                            <option value="7">Kịch bản 7 (TV 7) – Tấn công ngắt quãng / chớp nhoáng (Transient Attack)</option>
+                            <option value="8">Kịch bản 8 (TV 8) – Vượt qua lớp lọc hành động (Action Mask-Bypassing)</option>
+                            <option value="9">Kịch bản 9 (TV 9) – Đầu độc phần thưởng khi huấn luyện (Reward Poisoning)</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Cấu hình mô hình đối chứng (4 cấu hình thực nghiệm)</label>
+                        <div class="model-selector-group">
+                            <button class="model-radio-btn" data-model="M0" title="Mô hình Dueling DQN bình thường (Đường cơ sở)">
+                                M0: Cơ sở
+                            </button>
+                            <button class="model-radio-btn active" data-model="M1" title="Mô hình Dueling DQN khi có tác động tấn công">
+                                M1: Bị tấn công
+                            </button>
+                            <button class="model-radio-btn" data-model="M2" title="Dueling DQN + Huấn luyện đối kháng (Adversarial Training)">
+                                M2: Huấn luyện ĐK
+                            </button>
+                            <button class="model-radio-btn" data-model="M3" title="Dueling DQN + Action Masking & Kiểm tra ràng buộc bằng dữ liệu thực tế">
+                                M3: Kiểm tra thực tế
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Tham số nhiễu FGSM (<span id="label-epsilon">ε = 0.15</span>) • Cường độ (<span id="label-intensity">30%</span>)</label>
+                        <div class="sliders-inline">
+                            <div class="slider-item">
+                                <input type="range" id="input-epsilon" min="0.05" max="0.40" step="0.01" value="0.15" title="Biên độ nhiễu đối kháng FGSM ε" />
+                            </div>
+                            <div class="slider-item">
+                                <input type="range" id="input-intensity" min="0.10" max="0.60" step="0.05" value="0.30" title="Tỷ lệ phần tử chịu tác động" />
+                            </div>
+                            <input type="number" id="input-seed" class="number-input" value="2026" style="width: 78px;" title="Seed cố định bộ dữ liệu chung" />
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <button id="btn-recalculate" class="btn-primary">
+                            ⚡ Chạy Lại Mô Phỏng
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="scenario-info-banner">
+                <div>
+                    <span id="scenario-group-badge" class="badge-group">Nhóm 1 – Tấn công dữ liệu đầu vào</span>
+                    <h2 id="scenario-title-heading">Kịch bản 1: Giả mạo trạng thái đóng/mở kho</h2>
+                    <p id="scenario-desc-text" class="text-secondary"></p>
+                </div>
+                <div class="scenario-meta-box">
+                    <p><strong>Thành phần bị tác động:</strong> <span id="scenario-target-vector" class="text-warning"></span></p>
+                    <p style="margin-top: 4px;"><strong>Mục tiêu đánh giá:</strong> <span id="scenario-goal-text"></span></p>
+                    <p style="margin-top: 4px; color: #38bdf8;"><strong id="current-model-desc"></strong></p>
+                </div>
+            </div>
+
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-title">1. Tổng chi phí phân bổ (TAC)</div>
+                    <div id="kpi-tac" class="kpi-value">0</div>
+                    <div id="kpi-tac-sub" class="kpi-sub">Đơn vị tiền</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">2. Chi phí vận chuyển TB (ATC)</div>
+                    <div id="kpi-atc" class="kpi-value">0</div>
+                    <div id="kpi-atc-sub" class="kpi-sub">Đơn vị tiền / đơn hàng</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">3. Nhu cầu chưa đáp ứng (UD)</div>
+                    <div id="kpi-ud" class="kpi-value">0</div>
+                    <div id="kpi-dfr-sub" class="kpi-sub">Tỷ lệ đáp ứng (DFR): 100%</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">4 &amp; 5. Vi phạm CV / l_max (LV)</div>
+                    <div id="kpi-cv-lv" class="kpi-value">0 / 0</div>
+                    <div id="kpi-cv-lv-sub" class="kpi-sub">Số lần vi phạm thực tế</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">6. Tỷ lệ phân bổ lỗi (IR)</div>
+                    <div id="kpi-ir" class="kpi-value">0%</div>
+                    <div id="kpi-ir-sub" class="kpi-sub">Invalid Allocation Rate</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">7 &amp; 8. Phần thưởng (AR) &amp; Phục hồi</div>
+                    <div id="kpi-ar" class="kpi-value">0</div>
+                    <div id="kpi-rt-sub" class="kpi-sub">Thời gian phục hồi (RT): 0 bước</div>
+                </div>
+            </div>
+
+            <div class="visualizer-grid">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>Bản Đồ Điều Phối Mạng Lưới 50 Kho Hàng (W₁..W₅₀) &amp; 50 Khách Hàng (U₁..U₅₀)</h3>
+                        <span id="step-counter-badge" class="spec-badge">Bước 50 / 50</span>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="network-canvas"></canvas>
+                    </div>
+                    <div class="map-legend">
+                        <div class="legend-item">
+                            <span class="legend-box" style="background: #3b82f6;"></span> Kho đang mở (44 kho)
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-box" style="background: #f59e0b;"></span> 5 Kho chiến lược trung tâm (W1, W10, W20, W30, W40)
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-box" style="background: #ef4444;"></span> Kho đang đóng bảo trì (6 kho: W7, W15, W23, W31, W42, W48)
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-box" style="background: #10b981; border-radius: 50%;"></span> Khách hàng được phục vụ đủ
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-box" style="background: #ef4444; border-radius: 50%;"></span> Tuyến phân bổ vi phạm / thiếu hàng
+                        </div>
+                    </div>
+                    <div class="playback-bar">
+                        <button id="btn-play-steps" class="btn-primary btn-sm">▶ Phát mô phỏng từng bước (1 → 50)</button>
+                        <input type="range" id="slider-step" min="1" max="50" value="50" />
+                        <button id="btn-reset-steps" class="btn-secondary btn-sm">Hiển thị cả 50 bước</button>
+                    </div>
+                </div>
+
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>Bộ Giải Mã Kiến Trúc Dueling DQN &amp; Bảng Kết Quả Kịch Bản</h3>
+                    </div>
+
+                    <div class="dueling-inspector-box">
+                        <div style="font-size: 12.5px; color: #cbd5e1;">
+                            <strong>Công thức Dueling DQN:</strong>
+                            <code>Q(s, a; θ) = V(s; θ) + [A(s, a; θ) - (1/|A|) Σ A(s, a'; θ)]</code>
+                            • <strong>Nhiễu FGSM:</strong> <code>s_adv = s + ε·sign(∇_s L)</code>
+                        </div>
+                        <div class="dueling-streams-grid">
+                            <div class="stream-card">
+                                <span>Nhánh giá trị trạng thái V(s; θ)</span>
+                                <strong id="dueling-v-val">+14.20</strong>
+                            </div>
+                            <div class="stream-card">
+                                <span>Giá trị Q(s, a*; θ) của kho được chọn</span>
+                                <strong id="dueling-q-val">+16.85</strong>
+                            </div>
+                            <div class="stream-card">
+                                <span>Quyết định chọn kho (Action a_t)</span>
+                                <strong id="dueling-action-val">W1 → W1</strong>
+                            </div>
+                            <div class="stream-card">
+                                <span>Trạng thái kiểm tra ràng buộc</span>
+                                <div style="margin-top: 3px;"><span id="dueling-status-val" class="status-pill status-ok">HỢP LỆ</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h4 style="font-size: 13.5px; margin-bottom: 6px; color: #38bdf8;">
+                        Bảng số liệu chuẩn của kịch bản đang chọn (Điền trực tiếp vào mục "..." trong báo cáo):
+                    </h4>
+                    <div id="live-scenario-table-container" class="table-responsive"></div>
+                </div>
+            </div>
+
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>Nhật Ký Ra Quyết Định Phân Bổ Chi Tiết (50 Bước Tương Ứng 50 Khách Hàng U₁ → U₅₀)</h3>
+                    <span class="text-muted">Đối chiếu giữa Dữ liệu quan sát (đã chịu nhiễu) và Dữ liệu thực tế tại kho</span>
+                </div>
+                <div class="table-responsive" style="max-height: 360px; overflow-y: auto;">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Bước</th>
+                                <th>Khách hàng</th>
+                                <th>Nhu cầu thực (Quan sát)</th>
+                                <th>Kho DQN đề xuất</th>
+                                <th>Kho thực thi</th>
+                                <th>Giá trị Q(s,a)</th>
+                                <th>Chi phí thực (Quan sát)</th>
+                                <th>Chưa đáp ứng (UD)</th>
+                                <th>Phần thưởng R_t</th>
+                                <th>Trạng thái kiểm tra</th>
+                            </tr>
+                        </thead>
+                        <tbody id="step-log-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- =================================================================== -->
+        <!-- TAB 2: CHI TIẾT 9 KỊCH BẢN TẤN CÔNG (BẢNG BÁO CÁO THÀNH VIÊN 1 -> 9) -->
+        <!-- =================================================================== -->
+        <section id="tab-scenarios-detail" class="tab-panel">
+            <div class="panel-card" style="margin-bottom: 18px;">
+                <div class="panel-header">
+                    <div>
+                        <h3>Bảng Kết Quả Chi Tiết Cho 9 Kịch Bản (Thành Viên 1 → Thành Viên 9)</h3>
+                        <p class="text-muted">
+                            Tất cả các dấu <code>...</code> trong tài liệu gốc đã được điền đầy đủ bằng kết quả mô phỏng thống nhất trên cùng bộ dữ liệu 50 kho × 50 khách hàng.
+                        </p>
+                    </div>
+                    <button class="btn-primary" onclick="copyFullChapter4Report()">
+                        📋 Sao Chép Toàn Bộ Số Liệu 9 Kịch Bản
+                    </button>
+                </div>
+            </div>
+
+            <div id="all-scenarios-report-list"></div>
+        </section>
+
+        <!-- =================================================================== -->
+        <!-- TAB 3: TỔNG HỢP CHƯƠNG 4 (MỤC 4.5 & 4.6 - SO SÁNH M0, M1, M2, M3)    -->
+        <!-- =================================================================== -->
+        <section id="tab-chapter4-summary" class="tab-panel">
+            <div class="panel-card" style="margin-bottom: 18px;">
+                <div class="panel-header">
+                    <div>
+                        <h3>4.5. Tổng Hợp Kết Quả Mô Phỏng Trên Bộ Chỉ Số Chung (8 Chỉ Số × 4 Cấu Hình M0, M1, M2, M3)</h3>
+                        <p class="text-muted">
+                            Bảng tổng hợp phục vụ trực tiếp cho mục 4.5.1 (Cơ sở), 4.5.2 (8 kịch bản vận hành), 4.5.3 (Reward Poisoning) và 4.5.4 (Tổng hợp 9 kịch bản).
+                        </p>
+                    </div>
+                    <button class="btn-primary" onclick="copyFullChapter4Report()">
+                        📋 Sao Chép Báo Cáo Mục 4.5 &amp; 4.6
+                    </button>
+                </div>
+
+                <div class="canvas-wrapper" style="padding: 12px; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
+                        <strong>Biểu đồ so sánh Tổng chi phí phân bổ (TAC) qua 9 Kịch bản giữa 4 Cấu hình (M0, M1, M2, M3)</strong>
+                        <div class="map-legend" style="margin-top: 0;">
+                            <span class="legend-item"><span class="legend-box" style="background: #38bdf8;"></span> M0: Bình thường</span>
+                            <span class="legend-item"><span class="legend-box" style="background: #ef4444;"></span> M1: Khi bị tấn công</span>
+                            <span class="legend-item"><span class="legend-box" style="background: #f59e0b;"></span> M2: Adversarial Training</span>
+                            <span class="legend-item"><span class="legend-box" style="background: #10b981;"></span> M3: Action Masking + Kiểm tra thực tế</span>
+                        </div>
+                    </div>
+                    <canvas id="summary-chart-canvas"></canvas>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Mã</th>
+                                <th>Kịch bản &amp; Cấu hình thực nghiệm</th>
+                                <th>TAC (Đv tiền)</th>
+                                <th>ΔTAC (%)</th>
+                                <th>ATC (Đv/đơn)</th>
+                                <th>UD (Đv hàng)</th>
+                                <th>DFR (%)</th>
+                                <th>CV (Lần)</th>
+                                <th>LV (Lần)</th>
+                                <th>IR (%)</th>
+                                <th>AR (Điểm)</th>
+                                <th>RT (Bước)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summary-all-scenarios-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>4.6. Phân Tích Kết Quả Mô Phỏng (Theo Đúng Đề Cương Mục 4.6.1 → 4.6.5)</h3>
+                </div>
+
+                <div class="scenario-report-card" style="margin-bottom: 12px;">
+                    <h4>4.6.1. Phân tích ảnh hưởng của tấn công lên dữ liệu trạng thái (State Manipulation)</h4>
+                    <p style="margin-top: 6px; color: #cbd5e1;">
+                        Trong nhóm kịch bản 1 – 4, kẻ tấn công can thiệp trực tiếp vào 4 thành phần cốt lõi của vector trạng thái 2.650/2.750 chiều gồm:
+                        <code>Open Status</code>, <code>Transport Costs</code>, <code>Capacity</code> và <code>Demand</code>.
+                        Do mạng Dueling DQN tính toán nhánh giá trị trạng thái <code>V(s; θ)</code> và nhánh lợi thế <code>A(s, a; θ)</code> trực tiếp từ vector quan sát <code>s_obs</code>,
+                        nhiễu đối kháng FGSM làm dịch chuyển thứ tự ưu tiên của các giá trị Q. Nghiêm trọng nhất là <strong>Kịch bản 2 (Transport Cost Poisoning)</strong>
+                        khiến mô hình chọn các tuyến vận chuyển xa làm tổng chi phí TAC tăng vọt (+173,87%), và <strong>Kịch bản 4 (Fake Demand Fluctuation)</strong>
+                        gây lệch cung – cầu giữa lượng hàng xuất kho với nhu cầu thực của khách hàng.
+                    </p>
+                </div>
+
+                <div class="scenario-report-card" style="margin-bottom: 12px;">
+                    <h4>4.6.2. Phân tích ảnh hưởng của tấn công lên ràng buộc nghiệp vụ (Hard Constraints)</h4>
+                    <p style="margin-top: 6px; color: #cbd5e1;">
+                        Các ràng buộc cứng của hệ thống gồm: kho phải đang mở (<code>O_i = 1</code>), sức chứa còn lại đủ đáp ứng (<code>Cap_i ≥ D_j</code>)
+                        và số lượng khách hàng phục vụ không vượt ngưỡng (<code>l_i &lt; l_max,i</code>).
+                        Kết quả thực nghiệm ở <strong>Kịch bản 1, 3, 6 và 8</strong> chỉ ra rằng nếu lớp lọc <em>Action Masking</em> chỉ dựa vào dữ liệu trạng thái quan sát (Cấu hình A / M1),
+                        kẻ tấn công có thể làm giả thông tin để đánh lừa bộ lọc, dẫn đến hàng loạt vi phạm sức chứa (CV = 20 ở KB3) và tràn giới hạn phục vụ (LV = 11 ở KB6).
+                        Ngược lại, khi triển khai <strong>Bộ kiểm tra ràng buộc độc lập truy xuất trực tiếp từ cơ sở dữ liệu kho thực tế (Cấu hình B / M3)</strong>,
+                        100% quyết định vi phạm đều bị từ chối và điều hướng an toàn (CV = 0, LV = 0, IR thực thi = 0%).
+                    </p>
+                </div>
+
+                <div class="scenario-report-card" style="margin-bottom: 12px;">
+                    <h4>4.6.3. Phân tích khả năng phục hồi và chống chịu (Resilience &amp; Recovery)</h4>
+                    <p style="margin-top: 6px; color: #cbd5e1;">
+                        Ở <strong>Kịch bản 5 (Distributed Multi-Node Attack)</strong>, dù chỉ 5/50 kho chiến lược trung tâm bị tấn công, hiệu suất toàn mạng lưới 45 kho vệ tinh còn lại cũng bị ảnh hưởng dây chuyền do phải gánh tải với lộ trình dài hơn.
+                        Ở <strong>Kịch bản 7 (Transient / Random-Time Attack)</strong>, khi nhiễu chỉ xuất hiện trong giai đoạn bước 61–80, mô hình có khả năng tự phục hồi ở giai đoạn bước 81–100 sau khi dữ liệu đầu vào sạch trở lại;
+                        thời gian phục hồi (RT) giảm từ 8 bước (ở M1) xuống chỉ còn 3 bước (ở M2) và 2 bước (ở M3).
+                    </p>
+                </div>
+
+                <div class="scenario-report-card" style="margin-bottom: 12px;">
+                    <h4>4.6.4. Phân tích ảnh hưởng của đầu độc phần thưởng (Reward Poisoning – Kịch bản 9)</h4>
+                    <p style="margin-top: 6px; color: #cbd5e1;">
+                        Khác với 8 kịch bản tấn công ở giai đoạn suy luận (Inference-time), <strong>Kịch bản 9</strong> tấn công ngay trong giai đoạn huấn luyện (Training-time).
+                        Model B được huấn luyện với tín hiệu phần thưởng bị đảo dấu chi phí nên đạt <em>Training Reward</em> rất cao (+19,45 điểm), tạo cảm giác mô hình hội tụ tốt.
+                        Tuy nhiên khi đưa vào vận hành thực tế và chấm điểm bằng hàm phần thưởng chuẩn, <em>Evaluation Reward</em> rơi xuống mức âm (-4,13 điểm) và tổng chi phí vận hành TAC tăng vọt lên 5.105 (+229,35%), chứng tỏ chính sách đã bị thao túng từ gốc.
+                    </p>
+                </div>
+
+                <div class="scenario-report-card" style="margin-bottom: 0;">
+                    <h4>4.6.5. Đánh giá tổng thể và hạn chế của mô hình</h4>
+                    <p style="margin-top: 6px; color: #cbd5e1;">
+                        Thực nghiệm chứng minh rằng <strong>Huấn luyện đối kháng (Adversarial Training – M2)</strong> giúp nâng cao độ bền vững nội tại của mạng nơ-ron trước nhiễu liên tục (như chi phí vận chuyển),
+                        trong khi <strong>Action Masking kết hợp Bộ kiểm tra ràng buộc độc lập trên dữ liệu thực tế (M3)</strong> là chốt chặn bắt buộc để bảo vệ các ràng buộc vật lý.
+                        Do đó, giải pháp tối ưu cho hệ thống vận tải thực tế là kiến trúc phòng thủ đa lớp kết hợp cả M2 và M3.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- =================================================================== -->
+        <!-- TAB 4: BỘ DỮ LIỆU GỐC CHUNG (50 KHO, 50 KHÁCH, VECTOR 2.750 CHIỀU)   -->
+        <!-- =================================================================== -->
+        <section id="tab-dataset-inspector" class="tab-panel">
+            <div class="panel-card" style="margin-bottom: 18px;">
+                <div class="panel-header">
+                    <h3>Cấu Trúc Vector Trạng Thái Đầu Vào (State Space: 2.650 Chiều Cơ Bản &amp; 2.750 Chiều Mở Rộng)</h3>
+                    <span class="spec-badge">Thống nhất 100% cho cả 9 thành viên</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Thành phần trạng thái</th>
+                                <th>Ký hiệu toán học</th>
+                                <th>Kích thước dữ liệu</th>
+                                <th>Miền giá trị &amp; Ý nghĩa trong bài toán Warehouse Allocation</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>1. Sức chứa còn lại (Capacity)</strong></td>
+                                <td><code>Cap = [Cap₁, ..., Cap₅₀]</code></td>
+                                <td>50 phần tử</td>
+                                <td>Lượng hàng khả dụng tại mỗi kho (Tổng sức chứa toàn hệ thống: 5.716 đơn vị)</td>
+                            </tr>
+                            <tr>
+                                <td><strong>2. Trạng thái hoạt động (Open Status)</strong></td>
+                                <td><code>O = [O₁, ..., O₅₀]</code></td>
+                                <td>50 phần tử</td>
+                                <td>Vector nhị phân {0, 1}: 1 = Kho đang mở (44 kho), 0 = Kho đang đóng bảo trì (6 kho)</td>
+                            </tr>
+                            <tr>
+                                <td><strong>3. Ma trận chi phí vận chuyển (Transport Costs)</strong></td>
+                                <td><code>C = [c_ij]₅₀ₓ₅₀</code></td>
+                                <td>2.500 phần tử</td>
+                                <td>Chi phí vận chuyển từ kho i đến khách hàng j (Từ 15 đến 165 đơn vị tiền)</td>
+                            </tr>
+                            <tr>
+                                <td><strong>4. Nhu cầu khách hàng (Demand)</strong></td>
+                                <td><code>D = [D₁, ..., D₅₀]</code></td>
+                                <td>50 phần tử</td>
+                                <td>Lượng hàng hóa cần đáp ứng của từng khách hàng (Tổng nhu cầu: 2.636 đơn vị)</td>
+                            </tr>
+                            <tr class="row-baseline">
+                                <td><strong>Tổng cấu trúc 4 nhóm cơ bản</strong></td>
+                                <td><code>50 + 50 + (50 × 50) + 50</code></td>
+                                <td><strong>2.650 chiều</strong></td>
+                                <td>Cấu trúc State Space cơ bản mục 4.2.2</td>
+                            </tr>
+                            <tr>
+                                <td><strong>5. Số khách đang phục vụ tại mỗi kho</strong></td>
+                                <td><code>l = [l₁, ..., l₅₀]</code></td>
+                                <td>50 phần tử</td>
+                                <td>Kiểm tra ràng buộc giới hạn phục vụ tối đa <code>l_i &lt; l_max,i</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>6. Khách hàng hiện tại đang xử lý</strong></td>
+                                <td><code>One-hot Customer Vector</code></td>
+                                <td>50 phần tử</td>
+                                <td>Xác định khách hàng U_j đang được phân bổ tại bước thời gian t</td>
+                            </tr>
+                            <tr class="row-defense">
+                                <td><strong>Tổng cấu trúc mở rộng đầy đủ</strong></td>
+                                <td><code>2.650 + 50 + 50</code></td>
+                                <td><strong>2.750 chiều</strong></td>
+                                <td>Đầu vào lớp Input Layer của mạng Dueling DQN (Mục 4.2.2 &amp; 4.3.1)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="visualizer-grid">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>Danh Sách 50 Kho Hàng (W₁ → W₅₀)</h3>
+                    </div>
+                    <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th>Mã kho</th>
+                                    <th>Tên kho</th>
+                                    <th>Tọa độ (X, Y)</th>
+                                    <th>Sức chứa (Cap)</th>
+                                    <th>Trạng thái (O_i)</th>
+                                    <th>Giới hạn l_max</th>
+                                    <th>Vai trò</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dataset-warehouses-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>Danh Sách 50 Khách Hàng (U₁ → U₅₀)</h3>
+                    </div>
+                    <div class="table-responsive" style="max-height: 420px; overflow-y: auto;">
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th>Mã KH</th>
+                                    <th>Tên khách hàng</th>
+                                    <th>Tọa độ (X, Y)</th>
+                                    <th>Nhu cầu (Demand)</th>
+                                    <th>Kho tối ưu chi phí (Oracle)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dataset-customers-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- =================================================================== -->
+        <!-- TAB 5: TRUNG TÂM PHÒNG THỦ ĐA LỚP & KIỂM DUYỆT ĐẦU VÀO (CHƯƠNG 5)   -->
+        <!-- =================================================================== -->
+        <section id="tab-security-center" class="tab-panel">
+            <div class="panel-card" style="margin-bottom: 18px;">
+                <div class="panel-header">
+                    <div>
+                        <h3>Trung Tâm Phòng Thủ Đa Lớp &amp; Kiểm Duyệt Trạng Thái Đầu Vào (Chương 5 – Giải Pháp Phòng Chống AI Attack)</h3>
+                        <p class="text-muted">
+                            Kiểm thử trực tiếp Bộ kiểm duyệt cấu trúc (Input Sanitizer), Bộ phát hiện bất thường thống kê (Anomaly Detector) và Rào chắn an toàn nghiệp vụ (Safety Guardrails).
+                        </p>
+                    </div>
+                </div>
+
+                <div class="controls-grid" style="margin-top: 12px;">
+                    <div class="control-group">
+                        <label>Chế độ đánh giá phòng thủ</label>
+                        <select id="server-eval-mode" class="select-input">
+                            <option value="defense">Phòng thủ đa lớp toàn diện (Combined Defense)</option>
+                            <option value="baseline">Đường cơ sở sạch (Clean Baseline)</option>
+                            <option value="attack">Tấn công đối kháng FGSM (Adversarial Attack)</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>Số tập đánh giá (Episodes)</label>
+                        <input id="server-eval-episodes" type="number" class="number-input" min="1" max="100" value="5" />
+                    </div>
+                    <div class="control-group">
+                        <label>Biên độ nhiễu ε (Epsilon)</label>
+                        <input id="server-eval-epsilon" type="number" class="number-input" min="0" max="1" step="0.01" value="0.10" />
+                    </div>
+                    <div class="control-group">
+                        <button id="btn-run-server-eval" class="btn-primary">▶ Thực Thi Đánh Giá Phòng Thủ</button>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(148,163,184,0.15); align-items: center;">
+                    <strong style="color: #38bdf8;">Kiểm thử tấn công dữ liệu rác / sai cấu trúc (Malformed State Injection):</strong>
+                    <button id="btn-test-junk-sample" class="btn-primary btn-sm">🛡️ Chạy Kiểm Thử Chặn Dữ Liệu Rác Mẫu</button>
+                    <a class="btn-secondary btn-sm" href="/api/demo/junk-attack" download="junk-attack.json">↓ Tải tệp junk-attack.json</a>
+                    <input id="input-junk-file" type="file" accept=".json,application/json" hidden />
+                    <button id="btn-upload-junk-file" class="btn-secondary btn-sm">⇧ Tải lên tệp JSON để kiểm duyệt</button>
+                </div>
+
+                <div id="security-console-log" class="console-log-box">[HỆ THỐNG PHÒNG THỦ] Sẵn sàng. Nhấn "Chạy Kiểm Thử Chặn Dữ Liệu Rác Mẫu" hoặc "Thực Thi Đánh Giá Phòng Thủ" để xem nhật ký kiểm duyệt.</div>
+            </div>
+
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>Bảng So Sánh Hiệu Quả 6 Lớp Phòng Thủ Hệ Thống Phân Bổ Kho Hàng (CWLP Defense Benchmark)</h3>
+                </div>
+                <div class="table-responsive">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Cấu hình vận hành &amp; Phòng thủ</th>
+                                <th>Tổng chi phí trung bình</th>
+                                <th>Chi phí mở kho cố định</th>
+                                <th>Chi phí vận chuyển</th>
+                                <th>Tỷ lệ phát hiện bất thường</th>
+                                <th>Nhu cầu chưa đáp ứng</th>
+                                <th>Trạng thái hệ thống</th>
+                            </tr>
+                        </thead>
+                        <tbody id="backend-defense-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="app-toast" class="app-toast">Đã sao chép!</div>
+
+    <script src="engine.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
