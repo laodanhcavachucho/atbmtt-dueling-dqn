@@ -23,7 +23,7 @@ if not exist ".git" (
     "%GIT_EXE%" remote add origin https://github.com/laodanhcavachucho/laodanhcavachucho-atbmtt-dueling-dqn.git
 )
 "%GIT_EXE%" pull origin main --allow-unrelated-histories --no-edit 2>nul
-"%GIT_EXE%" add index.html app.js engine.js styles.css
+"%GIT_EXE%" add index.html app.js engine.js styles.css supabase-service.js supabase_schema.sql
 "%GIT_EXE%" commit -m "Cap nhat giao dien Web Mo phong Dueling DQN"
 "%GIT_EXE%" push -u origin main --force
 
