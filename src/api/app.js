@@ -62,6 +62,14 @@ export function createApp({ data, evaluate, train, resultsDirectory }) {
     res.sendFile(path.join(publicDirectory, "index.html"));
   });
 
+  app.get("/dashboard", (_req, res) => {
+    res.sendFile(path.join(publicDirectory, "index.html"));
+  });
+
+  app.get("/attack-sandbox", (_req, res) => {
+    res.sendFile(path.join(publicDirectory, "attack-sandbox.html"));
+  });
+
   app.get("/health", (_req, res) => res.json({ ok: true, service: "secure-cwlp-agent" }));
   app.get("/data", (_req, res) =>
     res.json({ warehouses: data.warehouses, customers: data.customers, source: data.source })
